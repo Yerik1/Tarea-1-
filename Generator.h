@@ -7,10 +7,5 @@
 
 
 
-class Generator {
-
-};
-
-
 
 #endif //GENERATOR_H
