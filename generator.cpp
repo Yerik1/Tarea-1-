@@ -46,17 +46,18 @@ void generateFile(const std::string& outputFilePath, Size size) {
 
 
 int main(int argc, char *argv[]) {
-
-        //Cantidad de argumentos diferente a 5
-        if (argc != 5) {
-            std::cerr << "Uso: " << argv[0] << " -size <SIZE> -output <OUTPUT FILE PATH>" << std::endl;
-            return 1;
-        }
-
         //Variable donde se va a guardar el tamaño
         Size size;
         //Variable para guardar el argumento del la ruta
         std::string outputFilePath;
+        //Cantidad de argumentos diferente a 5
+        if (argc != 5) {
+            std::cerr << "Uso: " << argv[0] << " -size <SIZE> -output <OUTPUT FILE PATH>" << std::endl;
+            generateFile(".", size=SMALL);
+            return 1;
+        }
+
+
 
         //ciclo para ir guardadando los argumentos
         for (int i = 1; i < argc; ++i) {

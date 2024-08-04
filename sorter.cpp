@@ -51,22 +51,18 @@ public:
     std::string outputFilePath;
 
     void guardarFrameEnArchivo(Frames* frame, int frameIndex) {
-        std::ofstream outputFile(outputFilePath+"/salida", std::ios::in | std::ios::out);
+        std::ofstream outputFile(outputFilePath + "/salida", std::ios::binary | std::ios::in | std::ios::out);
 
         if (!outputFile) {
             throw std::runtime_error("Error al abrir el archivo para guardar el frame");
         }
 
-        // Mueve el puntero de escritura a la posición correcta del frame
-        outputFile.seekp(frameIndex * ARRAY_SIZE * 2 * sizeof(int), std::ios::beg);
+        // Calcula la posición donde se debe escribir el frame
+        int position = frameIndex * ARRAY_SIZE * sizeof(int);
+        outputFile.seekp(position);
 
-        const int* numeros = frame->getNumeros();
-        for (int i = 0; i < ARRAY_SIZE; ++i) {
-            outputFile << numeros[i];
-            if (i < ARRAY_SIZE - 1) {
-                outputFile << ", ";
-            }
-        }
+        // Escribe el frame en la posición correspondiente, sobrescribiendo el contenido existente
+        outputFile.write(reinterpret_cast<char*>(frames[frameIndex]), ARRAY_SIZE * sizeof(int));
 
         outputFile.close();
     }
@@ -96,20 +92,17 @@ public:
     }
 
     void inicializarArchivoDeSalida() {
-        std::ofstream outputFile(outputFilePath+"/salida", std::ios::out | std::ios::trunc);
+        std::ofstream outputFile(outputFilePath + "/salida", std::ios::binary | std::ios::out | std::ios::trunc);
         if (!outputFile) {
             throw std::runtime_error("Error al abrir el archivo para inicializar");
         }
-
+        /*
         int zero = 0;
         for (int i = 0; i < 128000000; ++i) {
-            if (i > 0) {
-                outputFile << ", ";
-            }
-            outputFile << zero;
+            outputFile.write(reinterpret_cast<const char*>(&zero), sizeof(zero));
         }
 
-        outputFile.close();
+        outputFile.close();*/
     }
 
     int& operator[](int index) {
@@ -260,6 +253,39 @@ void bubbleSort(PagedArray& arr, int n) {
     }
 }
 
+void convertirBinarioAEnteros(const std::string& inputFileName, const std::string& outputFileName) {
+    std::ifstream inputFile(inputFileName, std::ios::binary);
+    if (!inputFile) {
+        std::cerr << "No se pudo abrir el archivo binario de entrada.\n";
+        return;
+    }
+
+    std::ofstream outputFile(outputFileName);
+    if (!outputFile) {
+        // Intentar crear el archivo si no existe
+        outputFile.open(outputFileName, std::ios::out | std::ios::trunc);
+        if (!outputFile) {
+            std::cerr << "No se pudo crear el archivo de texto de salida.\n";
+            return;
+        }
+    }
+
+    int number;
+    bool first = true;
+
+    // Lee el archivo binario y escribe los enteros separados por comas en el archivo de salida
+    while (inputFile.read(reinterpret_cast<char*>(&number), sizeof(int))) {
+        if (!first) {
+            outputFile << ",";
+        }
+        outputFile << number;
+        first = false;
+    }
+
+    inputFile.close();
+    outputFile.close();
+}
+
 // Función principal de ordenamiento
 void sorter(const std::string& inputFilePath, const std::string& outputFilePath, const std::string& algoritmo) {
     PagedArray pagedArray(inputFilePath, outputFilePath);
@@ -274,18 +300,14 @@ void sorter(const std::string& inputFilePath, const std::string& outputFilePath,
         quickSort(pagedArray, 0, totalIntegers - 1);
     } else if (algoritmo == "IS") {
         insertionSort(pagedArray, totalIntegers);
-        for (size_t i = 0; i < totalIntegers; ++i) {
-            current = i;
-        }
     } else if (algoritmo == "BS") {
         bubbleSort(pagedArray, totalIntegers);
-        for (size_t i = 0; i < totalIntegers; ++i) {
-            current = i;
-        }
+
     } else {
         std::cerr << "Algoritmo no reconocido: " << algoritmo << std::endl;
         return;
     }
+
 }
 
 // Función para leer los argumentos
@@ -293,6 +315,7 @@ int main(int argc, char *argv[]) {
     if (argc != 7) {
         std::cerr << "Uso: " << argv[0] << " -input <INPUT FILE PATH> -output <OUTPUT FILE PATH> -alg <ALGORITMO>" << std::endl;
         sorter("./prueba",".","QS");
+        convertirBinarioAEnteros("./salida","./salidaEntera.txt");
         return 1;
     }
 
@@ -318,6 +341,6 @@ int main(int argc, char *argv[]) {
 
     // Ordenar el archivo de entrada y guardar el resultado
     sorter(inputFilePath, outputFilePath, algoritmo);
-
+    convertirBinarioAEnteros(outputFilePath+"/salida",outputFilePath+"/salidaEntera.txt");
     return 0;
 }
