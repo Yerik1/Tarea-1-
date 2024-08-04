@@ -5,7 +5,7 @@
 #include <chrono>
 #include <stdexcept>
 
-const int ARRAY_SIZE = 128;
+const int ARRAY_SIZE = 32000000;
 const int MAX_FRAMES = 4;
 
 class PagedArray {
@@ -51,27 +51,25 @@ public:
     std::string outputFilePath;
 
     void guardarFrameEnArchivo(Frames* frame, int frameIndex) {
-        std::ofstream outputFile(outputFilePath + "/salida", std::ios::binary | std::ios::app);
+        std::ofstream outputFile(outputFilePath+"/salida", std::ios::in | std::ios::out);
 
         if (!outputFile) {
             throw std::runtime_error("Error al abrir el archivo para guardar el frame");
         }
 
-        outputFile.seekp(frameIndex * ARRAY_SIZE * sizeof(int), std::ios::beg);
+        // Mueve el puntero de escritura a la posición correcta del frame
+        outputFile.seekp(frameIndex * ARRAY_SIZE * 2 * sizeof(int), std::ios::beg);
 
         const int* numeros = frame->getNumeros();
         for (int i = 0; i < ARRAY_SIZE; ++i) {
-            if (i > 0) {
+            outputFile << numeros[i];
+            if (i < ARRAY_SIZE - 1) {
                 outputFile << ", ";
             }
-            outputFile << numeros[i];
         }
 
         outputFile.close();
-        //std::cout << "Frame " << frameIndex << " guardado en archivo de salida.\n";
     }
-
-
 
     void guardarTodosLosFrames() {
         for (int i = 0; i < MAX_FRAMES; ++i) {
@@ -87,6 +85,7 @@ public:
     PagedArray(const std::string& inputPath, const std::string& outputPath)
         : inputFilePath(inputPath), outputFilePath(outputPath) {
         std::fill(std::begin(frames), std::end(frames), nullptr);
+        inicializarArchivoDeSalida();
     }
 
     ~PagedArray() {
@@ -96,23 +95,36 @@ public:
         }
     }
 
-    int& operator[](int index) {
+    void inicializarArchivoDeSalida() {
+        std::ofstream outputFile(outputFilePath+"/salida", std::ios::out | std::ios::trunc);
+        if (!outputFile) {
+            throw std::runtime_error("Error al abrir el archivo para inicializar");
+        }
 
+        int zero = 0;
+        for (int i = 0; i < 128000000; ++i) {
+            if (i > 0) {
+                outputFile << ", ";
+            }
+            outputFile << zero;
+        }
+
+        outputFile.close();
+    }
+
+    int& operator[](int index) {
         int frameIndex = index / ARRAY_SIZE;
         int offset = index % ARRAY_SIZE;
 
         // Verifica si el frame está cargado
         bool frameLoaded = false;
         for (int i = 0; i < MAX_FRAMES; ++i) {
-
             if (frames[i] && frames[i]->getNumeroPagina() == frameIndex) {
                 frameLoaded = true;
-                //std::cout << "Frame Fault";
                 return frames[i]->getNumeros()[offset];
             }
         }
         cargarFrameDesdeArchivo(frameIndex);
-
 
         // Regresa el valor solicitado
         for (int i = 0; i < MAX_FRAMES; ++i) {
@@ -128,7 +140,6 @@ public:
         // Verifica si hay un frame vacío
         int freeFrameIndex = -1;
         for (int i = 0; i < MAX_FRAMES; ++i) {
-
             if (!frames[i]) {
                 freeFrameIndex = i;
                 break;
@@ -150,21 +161,18 @@ public:
 
         inputFile.seekg(frameIndex * ARRAY_SIZE * sizeof(int), std::ios::beg);
 
-        int data[ARRAY_SIZE];
+        int* data = new int[ARRAY_SIZE];
         for (int i = 0; i < ARRAY_SIZE; ++i) {
             data[i] = 0;
         }
-        //std::cerr << "Ayudaaaaa";
+
         if (!inputFile.read(reinterpret_cast<char*>(data), ARRAY_SIZE * sizeof(int))) {
             throw std::runtime_error("Error al leer el archivo binario");
         }
 
         inputFile.close();
-
         frames[freeFrameIndex] = new Frames(frameIndex);
         frames[freeFrameIndex]->setNumeros(data);
-        //std::cout << "Frame Fault";
-        //std::cout << "Frame " << frameIndex << " cargado desde archivo.\n";
     }
 
     int verificarFrames() const {
@@ -226,6 +234,7 @@ void quickSort(PagedArray& arr, int start, int end) {
     // Ordenar la parte derecha
     quickSort(arr, p + 1, end);
 }
+
 // InsertionSort
 void insertionSort(PagedArray& arr, int n) {
     for (int i = 1; i < n; ++i) {
@@ -267,39 +276,23 @@ void sorter(const std::string& inputFilePath, const std::string& outputFilePath,
         insertionSort(pagedArray, totalIntegers);
         for (size_t i = 0; i < totalIntegers; ++i) {
             current = i;
-
         }
     } else if (algoritmo == "BS") {
         bubbleSort(pagedArray, totalIntegers);
         for (size_t i = 0; i < totalIntegers; ++i) {
             current = i;
-
         }
     } else {
         std::cerr << "Algoritmo no reconocido: " << algoritmo << std::endl;
         return;
     }
-
-    // Guardar el archivo ordenado
-    std::ofstream outputFile(outputFilePath, std::ios::binary);
-    if (!outputFile) {
-        std::cerr << "Error al abrir el archivo de salida: " << outputFilePath << std::endl;
-        return;
-    }
-
-    for (size_t i = 0; i < totalIntegers; ++i) {
-        int value = pagedArray[i];
-        outputFile.write(reinterpret_cast<const char*>(&value), sizeof(value));
-    }
-
-    outputFile.close();
 }
 
 // Función para leer los argumentos
 int main(int argc, char *argv[]) {
     if (argc != 7) {
         std::cerr << "Uso: " << argv[0] << " -input <INPUT FILE PATH> -output <OUTPUT FILE PATH> -alg <ALGORITMO>" << std::endl;
-        sorter("./prueba", ".", "QS");
+        sorter("./prueba",".","QS");
         return 1;
     }
 
