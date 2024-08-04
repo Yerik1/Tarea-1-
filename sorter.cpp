@@ -1,200 +1,305 @@
 #include <iostream>
 #include <fstream>
-#include <vector>
-#include <queue>
 #include <algorithm>
 #include <string>
-#include <ctime>
+#include <chrono>
+#include <stdexcept>
 
-// Tamaño del bloque en bytes
-const size_t BLOCK_SIZE = 1024 * 1024 * 10; // 10 MB
+const int ARRAY_SIZE = 128;
+const int MAX_FRAMES = 4;
 
-// Función para ordenar un bloque y guardarlo en un archivo temporal en formato binario
-void sortBlock(const std::string& inputFilePath, size_t start, size_t end, const std::string& tempFilePath) {
-    std::ifstream inputFile(inputFilePath, std::ios::binary);
-    std::ofstream tempFile(tempFilePath, std::ios::binary);
+class PagedArray {
+public:
+    class Frames {
+    private:
+        int numeroPagina;
+        int numeros[ARRAY_SIZE];
 
-    if (!inputFile) {
-        std::cerr << "Error al abrir el archivo de entrada: " << inputFilePath << std::endl;
-        return;
-    }
+    public:
+        Frames(int numeroPagina) : numeroPagina(numeroPagina) {
+            std::fill(std::begin(numeros), std::end(numeros), 0);
+        }
 
-    if (!tempFile) {
-        std::cerr << "Error al abrir el archivo temporal: " << tempFilePath << std::endl;
-        return;
-    }
+        int getNumeroPagina() const {
+            return numeroPagina;
+        }
 
-    inputFile.seekg(start);
+        void setNumeroPagina(int numeroPagina) {
+            this->numeroPagina = numeroPagina;
+        }
 
-    std::vector<int> buffer((end - start) / sizeof(int));
-    inputFile.read(reinterpret_cast<char*>(buffer.data()), buffer.size() * sizeof(int));
+        const int* getNumeros() const {
+            return numeros;
+        }
 
-    if (inputFile.fail() && !inputFile.eof()) {
-        std::cerr << "Error al leer el bloque desde el archivo. Start: " << start << ", End: " << end << std::endl;
-        return;
-    }
+        int* getNumeros() {
+            return numeros;
+        }
 
-    std::cout << "Bloque leído de " << start << " a " << end << ". Cantidad de enteros leídos: " << buffer.size() << std::endl;
+        void setNumeros(const int newNumeros[ARRAY_SIZE]) {
+            std::copy(newNumeros, newNumeros + ARRAY_SIZE, numeros);
+        }
 
-    std::sort(buffer.begin(), buffer.end());
-
-    tempFile.write(reinterpret_cast<const char*>(buffer.data()), buffer.size() * sizeof(int));
-
-    if (!tempFile) {
-        std::cerr << "Error al escribir el archivo temporal." << std::endl;
-    }
-
-    inputFile.close();
-    tempFile.close();
-}
-
-// Función para combinar archivos ordenados usando k-way merge en formato binario
-void mergeFiles(const std::vector<std::string>& sortedFiles, const std::string& outputFilePath) {
-    std::ofstream outputFile(outputFilePath, std::ios::binary);
-    std::vector<std::ifstream> inputFiles;
-
-    for (const auto& file : sortedFiles) {
-        inputFiles.emplace_back(file, std::ios::binary);
-    }
-
-    auto compare = [](const std::pair<int, size_t>& lhs, const std::pair<int, size_t>& rhs) {
-        return lhs.first > rhs.first;
+        int& operator[](int index) {
+            return numeros[index];
+        }
     };
-    std::priority_queue<std::pair<int, size_t>, std::vector<std::pair<int, size_t>>, decltype(compare)> minHeap(compare);
 
-    std::vector<int> currentValues(inputFiles.size());
+public:
+    Frames* frames[MAX_FRAMES];
+    std::string inputFilePath;
+    std::string outputFilePath;
 
-    for (size_t i = 0; i < inputFiles.size(); ++i) {
-        if (inputFiles[i].read(reinterpret_cast<char*>(&currentValues[i]), sizeof(int))) {
-            minHeap.emplace(currentValues[i], i);
+    void guardarFrameEnArchivo(Frames* frame, int frameIndex) {
+        std::ofstream outputFile(outputFilePath + "/salida", std::ios::binary | std::ios::app);
+
+        if (!outputFile) {
+            throw std::runtime_error("Error al abrir el archivo para guardar el frame");
+        }
+
+        outputFile.seekp(frameIndex * ARRAY_SIZE * sizeof(int), std::ios::beg);
+
+        const int* numeros = frame->getNumeros();
+        for (int i = 0; i < ARRAY_SIZE; ++i) {
+            if (i > 0) {
+                outputFile << ", ";
+            }
+            outputFile << numeros[i];
+        }
+
+        outputFile.close();
+        //std::cout << "Frame " << frameIndex << " guardado en archivo de salida.\n";
+    }
+
+
+
+    void guardarTodosLosFrames() {
+        for (int i = 0; i < MAX_FRAMES; ++i) {
+            if (frames[i]) {
+                guardarFrameEnArchivo(frames[i], i);
+                delete frames[i];
+                frames[i] = nullptr;
+            }
         }
     }
 
-    while (!minHeap.empty()) {
-        auto [value, fileIndex] = minHeap.top();
-        minHeap.pop();
-        outputFile.write(reinterpret_cast<const char*>(&value), sizeof(int));
+public:
+    PagedArray(const std::string& inputPath, const std::string& outputPath)
+        : inputFilePath(inputPath), outputFilePath(outputPath) {
+        std::fill(std::begin(frames), std::end(frames), nullptr);
+    }
 
-        if (inputFiles[fileIndex].read(reinterpret_cast<char*>(&currentValues[fileIndex]), sizeof(int))) {
-            minHeap.emplace(currentValues[fileIndex], fileIndex);
+    ~PagedArray() {
+        guardarTodosLosFrames(); // Asegúrate de guardar cualquier frame restante
+        for (int i = 0; i < MAX_FRAMES; ++i) {
+            delete frames[i];
         }
     }
 
-    if (!outputFile) {
-        std::cerr << "Error al escribir el archivo de salida." << std::endl;
+    int& operator[](int index) {
+
+        int frameIndex = index / ARRAY_SIZE;
+        int offset = index % ARRAY_SIZE;
+
+        // Verifica si el frame está cargado
+        bool frameLoaded = false;
+        for (int i = 0; i < MAX_FRAMES; ++i) {
+
+            if (frames[i] && frames[i]->getNumeroPagina() == frameIndex) {
+                frameLoaded = true;
+                //std::cout << "Frame Fault";
+                return frames[i]->getNumeros()[offset];
+            }
+        }
+        cargarFrameDesdeArchivo(frameIndex);
+
+
+        // Regresa el valor solicitado
+        for (int i = 0; i < MAX_FRAMES; ++i) {
+            if (frames[i] && frames[i]->getNumeroPagina() == frameIndex) {
+                return frames[i]->getNumeros()[offset];
+            }
+        }
+
+        throw std::runtime_error("Frame no cargado correctamente");
     }
 
-    outputFile.close();
-    for (auto& file : inputFiles) {
-        file.close();
+    void cargarFrameDesdeArchivo(int frameIndex) {
+        // Verifica si hay un frame vacío
+        int freeFrameIndex = -1;
+        for (int i = 0; i < MAX_FRAMES; ++i) {
+
+            if (!frames[i]) {
+                freeFrameIndex = i;
+                break;
+            }
+        }
+
+        if (freeFrameIndex == -1) {
+            // No hay frames libres, reemplazar uno aleatorio
+            freeFrameIndex = rand() % MAX_FRAMES;
+            guardarFrameEnArchivo(frames[freeFrameIndex], freeFrameIndex);
+            delete frames[freeFrameIndex];
+        }
+
+        // Lee el nuevo frame desde el archivo
+        std::ifstream inputFile(inputFilePath, std::ios::binary);
+        if (!inputFile) {
+            throw std::runtime_error("Error al abrir el archivo binario");
+        }
+
+        inputFile.seekg(frameIndex * ARRAY_SIZE * sizeof(int), std::ios::beg);
+
+        int data[ARRAY_SIZE];
+        for (int i = 0; i < ARRAY_SIZE; ++i) {
+            data[i] = 0;
+        }
+        //std::cerr << "Ayudaaaaa";
+        if (!inputFile.read(reinterpret_cast<char*>(data), ARRAY_SIZE * sizeof(int))) {
+            throw std::runtime_error("Error al leer el archivo binario");
+        }
+
+        inputFile.close();
+
+        frames[freeFrameIndex] = new Frames(frameIndex);
+        frames[freeFrameIndex]->setNumeros(data);
+        //std::cout << "Frame Fault";
+        //std::cout << "Frame " << frameIndex << " cargado desde archivo.\n";
+    }
+
+    int verificarFrames() const {
+        for (int i = 0; i < MAX_FRAMES; ++i) {
+            if (!frames[i]) return i + 1;
+        }
+        return 0;
+    }
+};
+
+// QuickSort
+// Función de partición para Quick Sort
+int partition(PagedArray& arr, int start, int end) {
+    int pivot = arr[start]; // Obtener el pivote
+
+    int count = 0;
+    for (int i = start + 1; i <= end; i++) {
+        if (arr[i] <= pivot) {
+            count++;
+        }
+    }
+
+    // Dar al elemento pivote su posición correcta
+    int pivotIndex = start + count;
+    std::swap(arr[pivotIndex], arr[start]);
+
+    // Ordenar las partes izquierda y derecha del pivote
+    int i = start, j = end;
+
+    while (i < pivotIndex && j > pivotIndex) {
+        while (arr[i] <= pivot) {
+            i++;
+        }
+
+        while (arr[j] > pivot) {
+            j--;
+        }
+
+        if (i < pivotIndex && j > pivotIndex) {
+            std::swap(arr[i++], arr[j--]);
+        }
+    }
+
+    return pivotIndex;
+}
+
+// Función de Quick Sort adaptada para PagedArray
+void quickSort(PagedArray& arr, int start, int end) {
+    // Caso base
+    if (start >= end)
+        return;
+
+    // Particionar el array
+    int p = partition(arr, start, end);
+
+    // Ordenar la parte izquierda
+    quickSort(arr, start, p - 1);
+
+    // Ordenar la parte derecha
+    quickSort(arr, p + 1, end);
+}
+// InsertionSort
+void insertionSort(PagedArray& arr, int n) {
+    for (int i = 1; i < n; ++i) {
+        int key = arr[i];
+        int j = i - 1;
+
+        while (j >= 0 && arr[j] > key) {
+            arr[j + 1] = arr[j];
+            --j;
+        }
+        arr[j + 1] = key;
     }
 }
 
-// Función para convertir el archivo binario ordenado a texto con enteros separados por comas
-void convertBinaryToText(const std::string& inputFilePath, const std::string& outputFilePath) {
-    std::ifstream inputFile(inputFilePath, std::ios::binary);
-    std::ofstream outputFile(outputFilePath);
-
-    if (!inputFile) {
-        std::cerr << "Error al abrir el archivo de entrada: " << inputFilePath << std::endl;
-        return;
-    }
-
-    if (!outputFile) {
-        std::cerr << "Error al abrir el archivo de salida: " << outputFilePath << std::endl;
-        return;
-    }
-
-    int number;
-    bool first = true;
-
-    while (inputFile.read(reinterpret_cast<char*>(&number), sizeof(number))) {
-        if (!first) {
-            outputFile << ", ";
+// BubbleSort
+void bubbleSort(PagedArray& arr, int n) {
+    for (int i = 0; i < n - 1; ++i) {
+        for (int j = 0; j < n - i - 1; ++j) {
+            if (arr[j] > arr[j + 1]) {
+                std::swap(arr[j], arr[j + 1]);
+            }
         }
-        outputFile << number;
-        first = false;
     }
-
-    if (!inputFile.eof() && inputFile.fail()) {
-        std::cerr << "Error al leer el archivo binario." << std::endl;
-    }
-
-    inputFile.close();
-    outputFile.close();
-}
-
-// Función para convertir el archivo de entrada binario a texto con enteros separados por comas
-void convertInputBinaryToText(const std::string& inputFilePath, const std::string& outputFilePath) {
-    std::ifstream inputFile(inputFilePath, std::ios::binary);
-    std::ofstream outputFile(outputFilePath);
-
-    if (!inputFile) {
-        std::cerr << "Error al abrir el archivo de entrada: " << inputFilePath << std::endl;
-        return;
-    }
-
-    if (!outputFile) {
-        std::cerr << "Error al abrir el archivo de salida: " << outputFilePath << std::endl;
-        return;
-    }
-
-    int number;
-    bool first = true;
-
-    while (inputFile.read(reinterpret_cast<char*>(&number), sizeof(number))) {
-        if (!first) {
-            outputFile << ", ";
-        }
-        outputFile << number;
-        first = false;
-    }
-
-    if (!inputFile.eof() && inputFile.fail()) {
-        std::cerr << "Error al leer el archivo binario." << std::endl;
-    }
-
-    inputFile.close();
-    outputFile.close();
 }
 
 // Función principal de ordenamiento
 void sorter(const std::string& inputFilePath, const std::string& outputFilePath, const std::string& algoritmo) {
+    PagedArray pagedArray(inputFilePath, outputFilePath);
     std::ifstream inputFile(inputFilePath, std::ios::binary | std::ios::ate);
-    size_t fileSize = inputFile.tellg();
+    std::streamsize fileSize = inputFile.tellg();
     inputFile.close();
 
-    size_t blockSize = BLOCK_SIZE;
-    size_t numBlocks = (fileSize + blockSize - 1) / blockSize;
+    int totalIntegers = 128000000;
+    int current = 0;
 
-    std::vector<std::string> tempFiles(numBlocks);
+    if (algoritmo == "QS") {
+        quickSort(pagedArray, 0, totalIntegers - 1);
+    } else if (algoritmo == "IS") {
+        insertionSort(pagedArray, totalIntegers);
+        for (size_t i = 0; i < totalIntegers; ++i) {
+            current = i;
 
-    for (size_t i = 0; i < numBlocks; ++i) {
-        size_t start = i * blockSize;
-        size_t end = std::min(start + blockSize, fileSize);
-        tempFiles[i] = outputFilePath + "/temp_block_" + std::to_string(i) + ".bin";
-        sortBlock(inputFilePath, start, end, tempFiles[i]);
+        }
+    } else if (algoritmo == "BS") {
+        bubbleSort(pagedArray, totalIntegers);
+        for (size_t i = 0; i < totalIntegers; ++i) {
+            current = i;
+
+        }
+    } else {
+        std::cerr << "Algoritmo no reconocido: " << algoritmo << std::endl;
+        return;
     }
 
-    std::string sortedBinaryPath = outputFilePath + "/sorted_data.bin";
-    mergeFiles(tempFiles, sortedBinaryPath);
-
-    for (const auto& file : tempFiles) {
-        std::remove(file.c_str());
+    // Guardar el archivo ordenado
+    std::ofstream outputFile(outputFilePath, std::ios::binary);
+    if (!outputFile) {
+        std::cerr << "Error al abrir el archivo de salida: " << outputFilePath << std::endl;
+        return;
     }
 
-    // Convertir el archivo binario ordenado a texto con enteros separados por comas
-    std::string textOutputPath = outputFilePath + "/salida_entera.txt";
-    convertBinaryToText(sortedBinaryPath, textOutputPath);
+    for (size_t i = 0; i < totalIntegers; ++i) {
+        int value = pagedArray[i];
+        outputFile.write(reinterpret_cast<const char*>(&value), sizeof(value));
+    }
 
-    // Convertir el archivo de entrada binario a texto con enteros separados por comas (sin ordenar)
-    std::string inputTextOutputPath = outputFilePath + "/entrada_entera.txt";
-    convertInputBinaryToText(inputFilePath, inputTextOutputPath);
+    outputFile.close();
 }
 
+// Función para leer los argumentos
 int main(int argc, char *argv[]) {
     if (argc != 7) {
         std::cerr << "Uso: " << argv[0] << " -input <INPUT FILE PATH> -output <OUTPUT FILE PATH> -alg <ALGORITMO>" << std::endl;
+        sorter("./prueba", ".", "QS");
         return 1;
     }
 

@@ -9,7 +9,7 @@
 #include <string>
 
 //peso de los archivos dependiendo del tamaño
-enum Size { SMALL = 512LL * 1024 * 1024, MEDIUM = 1024LL * 1024 * 1024, LARGE = 2LL * 1024 * 1024 * 1024 };
+enum Size { SMALL = 512LL * 1000 * 1000, MEDIUM = 1000LL * 1000 * 1000, LARGE = 2LL * 1000 * 1000 * 1000 };
 
 //Metodo que genera los archivos que recibe como parametros el lugar a crear el archivo y el tamaño de este
 void generateFile(const std::string& outputFilePath, Size size) {
