@@ -7,6 +7,8 @@
 
 const int ARRAY_SIZE = 8000;
 const int MAX_FRAMES = 4;
+int totalIntegers = 0; // Variable global para el número total de enteros
+int fileSizeInt = 0;
 
 class PagedArray {
 public:
@@ -108,7 +110,7 @@ public:
             throw std::runtime_error("Error al abrir el archivo para inicializar");
         }
         int zero = 0;
-        for (int i = 0; i < 128000000; ++i) {
+        for (int i = 0; i < totalIntegers; ++i) {
             outputFile.write(reinterpret_cast<const char*>(&zero), sizeof(zero));
         }
 
@@ -317,16 +319,31 @@ void convertirBinarioAEnteros(const std::string& inputFileName, const std::strin
     inputFile.close();
     outputFile.close();
 }
-
-// Función principal de ordenamiento
-void sorter(const std::string& inputFilePath, const std::string& outputFilePath, const std::string& algoritmo) {
-    PagedArray pagedArray(inputFilePath, outputFilePath);
+// Función para calcular y almacenar el tamaño del archivo
+void calcularTamanoArchivo(const std::string& inputFilePath) {
     std::ifstream inputFile(inputFilePath, std::ios::binary | std::ios::ate);
-    std::streamsize fileSize = inputFile.tellg();
+    if (!inputFile) {
+        throw std::runtime_error("No se pudo abrir el archivo de entrada");
+    }
+
+    fileSizeInt = static_cast<int>(inputFile.tellg());
+    inputFile.close();
+}
+void sorter(const std::string& inputFilePath, const std::string& outputFilePath, const std::string& algoritmo) {
+
+    calcularTamanoArchivo(inputFilePath);
+    totalIntegers = fileSizeInt/sizeof(int);  // Número total de enteros en el archivo
+    std::cout << "Número total de enteros en el archivo: " << totalIntegers << std::endl;
+
+    PagedArray pagedArray(inputFilePath, outputFilePath);
+    // Calcular el número total de enteros en el archivo de entrada
+    std::ifstream inputFile(inputFilePath, std::ios::binary | std::ios::ate);
+    if (!inputFile) {
+        std::cerr << "Error al abrir el archivo de entrada.\n";
+        return;
+    }
     inputFile.close();
 
-    int totalIntegers = 128000000;
-    int current = 0;
 
     if (algoritmo == "QS") {
         quickSort(pagedArray, 0, totalIntegers - 1);
@@ -334,19 +351,16 @@ void sorter(const std::string& inputFilePath, const std::string& outputFilePath,
         insertionSort(pagedArray, totalIntegers);
     } else if (algoritmo == "BS") {
         bubbleSort(pagedArray, totalIntegers);
-
     } else {
         std::cerr << "Algoritmo no reconocido: " << algoritmo << std::endl;
         return;
     }
-
 }
-
 // Función para leer los argumentos
 int main(int argc, char *argv[]) {
     if (argc != 7) {
         std::cerr << "Uso: " << argv[0] << " -input <INPUT FILE PATH> -output <OUTPUT FILE PATH> -alg <ALGORITMO>" << std::endl;
-        sorter("./prueba",".","QS");
+        sorter("./entrada",".","QS");
         convertirBinarioAEnteros("./salida","./salidaEntera.txt");
         return 1;
     }

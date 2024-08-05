@@ -15,7 +15,7 @@ enum Size { SMALL = 512LL * 1000 * 1000, MEDIUM = 1000LL * 1000 * 1000, LARGE = 
 void generateFile(const std::string& outputFilePath, Size size) {
 
     // Construye la ruta completa del archivo
-    std::string fullPath = outputFilePath + "/prueba";
+    std::string fullPath = outputFilePath + "/entrada";
 
     std::ofstream file(fullPath, std::ios::binary); // Abrir archivo en modo binario
 
@@ -53,7 +53,7 @@ int main(int argc, char *argv[]) {
         //Cantidad de argumentos diferente a 5
         if (argc != 5) {
             std::cerr << "Uso: " << argv[0] << " -size <SIZE> -output <OUTPUT FILE PATH>" << std::endl;
-            generateFile(".", size=SMALL);
+            generateFile(".", size=MEDIUM);
             return 1;
         }
 
