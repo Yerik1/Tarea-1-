@@ -5,7 +5,7 @@
 #include <chrono>
 #include <stdexcept>
 
-const int ARRAY_SIZE = 32000000;
+const int ARRAY_SIZE = 8000;
 const int MAX_FRAMES = 4;
 
 class PagedArray {
@@ -51,26 +51,37 @@ public:
     std::string outputFilePath;
 
     void guardarFrameEnArchivo(Frames* frame, int frameIndex) {
-        std::ofstream outputFile(outputFilePath + "/salida", std::ios::binary | std::ios::in | std::ios::out);
+        std::fstream outputFile(outputFilePath + "/salida", std::ios::binary | std::ios::in | std::ios::out);
 
         if (!outputFile) {
             throw std::runtime_error("Error al abrir el archivo para guardar el frame");
         }
 
         // Calcula la posición donde se debe escribir el frame
-        int position = frameIndex * ARRAY_SIZE * sizeof(int);
+        std::streampos position = frameIndex * ARRAY_SIZE * sizeof(int);
         outputFile.seekp(position);
 
-        // Escribe el frame en la posición correspondiente, sobrescribiendo el contenido existente
-        outputFile.write(reinterpret_cast<char*>(frames[frameIndex]), ARRAY_SIZE * sizeof(int));
+        if (!outputFile) {
+            throw std::runtime_error("Error al mover el puntero de escritura en el archivo");
+        }
+
+        // Reemplaza el contenido existente con los datos del frame
+        outputFile.write(reinterpret_cast<char*>(frame->getNumeros()), ARRAY_SIZE * sizeof(int));
+
+        if (!outputFile) {
+            throw std::runtime_error("Error al escribir en el archivo");
+        }
+
+        //std::cout << "Frame " << frame->getNumeroPagina() << " guardado en posición " << position << std::endl;
 
         outputFile.close();
     }
 
+
     void guardarTodosLosFrames() {
         for (int i = 0; i < MAX_FRAMES; ++i) {
             if (frames[i]) {
-                guardarFrameEnArchivo(frames[i], i);
+                guardarFrameEnArchivo(frames[i], frames[i]->getNumeroPagina());
                 delete frames[i];
                 frames[i] = nullptr;
             }
@@ -96,13 +107,12 @@ public:
         if (!outputFile) {
             throw std::runtime_error("Error al abrir el archivo para inicializar");
         }
-        /*
         int zero = 0;
         for (int i = 0; i < 128000000; ++i) {
             outputFile.write(reinterpret_cast<const char*>(&zero), sizeof(zero));
         }
 
-        outputFile.close();*/
+        outputFile.close();
     }
 
     int& operator[](int index) {
@@ -142,30 +152,52 @@ public:
         if (freeFrameIndex == -1) {
             // No hay frames libres, reemplazar uno aleatorio
             freeFrameIndex = rand() % MAX_FRAMES;
-            guardarFrameEnArchivo(frames[freeFrameIndex], freeFrameIndex);
+            // Guardar el frame existente en el archivo de salida
+            guardarFrameEnArchivo(frames[freeFrameIndex], frames[freeFrameIndex]->getNumeroPagina());
             delete frames[freeFrameIndex];
         }
 
-        // Lee el nuevo frame desde el archivo
-        std::ifstream inputFile(inputFilePath, std::ios::binary);
-        if (!inputFile) {
-            throw std::runtime_error("Error al abrir el archivo binario");
+        // Verificar si el frame ya está en el archivo de salida
+        std::ifstream outputFile(outputFilePath + "/salida", std::ios::binary);
+        if (!outputFile) {
+            throw std::runtime_error("Error al abrir el archivo de salida para leer el frame");
         }
-
-        inputFile.seekg(frameIndex * ARRAY_SIZE * sizeof(int), std::ios::beg);
 
         int* data = new int[ARRAY_SIZE];
+        std::streampos position = frameIndex * ARRAY_SIZE * sizeof(int);
+        outputFile.seekg(position);
+        outputFile.read(reinterpret_cast<char*>(data), ARRAY_SIZE * sizeof(int));
+
+        bool loadFromOutput = false;
         for (int i = 0; i < ARRAY_SIZE; ++i) {
-            data[i] = 0;
+            if (data[i] != 0) {
+                loadFromOutput = true;
+                break;
+            }
         }
 
-        if (!inputFile.read(reinterpret_cast<char*>(data), ARRAY_SIZE * sizeof(int))) {
-            throw std::runtime_error("Error al leer el archivo binario");
+        outputFile.close();
+
+        if (!loadFromOutput) {
+            // Leer el nuevo frame desde el archivo de entrada
+            std::ifstream inputFile(inputFilePath, std::ios::binary);
+            if (!inputFile) {
+                throw std::runtime_error("Error al abrir el archivo binario de entrada");
+            }
+
+            inputFile.seekg(position);
+            if (!inputFile.read(reinterpret_cast<char*>(data), ARRAY_SIZE * sizeof(int))) {
+                throw std::runtime_error("Error al leer el archivo binario de entrada");
+            }
+
+            inputFile.close();
         }
 
-        inputFile.close();
         frames[freeFrameIndex] = new Frames(frameIndex);
         frames[freeFrameIndex]->setNumeros(data);
+        delete[] data;
+
+        //std::cout << "Frame " << frameIndex << " cargado en posición " << position << std::endl;
     }
 
     int verificarFrames() const {
