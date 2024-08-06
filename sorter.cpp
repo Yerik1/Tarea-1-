@@ -5,23 +5,30 @@
 #include <chrono>
 #include <stdexcept>
 
+//Variables Globales
 const int ARRAY_SIZE = 8000;
 const int MAX_FRAMES = 4;
-int totalIntegers = 0; // Variable global para el número total de enteros
+int totalIntegers = 0;
 int fileSizeInt = 0;
+long PageHits=0;
+long PageFaults=0;
 
+//Clase PagedArray donde se guradan fragmentos del archivo a cargar para evitar el cargar todo el archivo a memoria
 class PagedArray {
 public:
+    //Subclase donde se administra cada array con informacion a ordenar
     class Frames {
     private:
         int numeroPagina;
         int numeros[ARRAY_SIZE];
 
     public:
+        //Constructor
         Frames(int numeroPagina) : numeroPagina(numeroPagina) {
             std::fill(std::begin(numeros), std::end(numeros), 0);
         }
 
+        //Gets y sets
         int getNumeroPagina() const {
             return numeroPagina;
         }
@@ -42,16 +49,19 @@ public:
             std::copy(newNumeros, newNumeros + ARRAY_SIZE, numeros);
         }
 
+        //Operador
         int& operator[](int index) {
             return numeros[index];
         }
     };
 
 public:
+    //Variables de Paged Array
     Frames* frames[MAX_FRAMES];
     std::string inputFilePath;
     std::string outputFilePath;
 
+    //Metodo que realiza el flush de un frame
     void guardarFrameEnArchivo(Frames* frame, int frameIndex) {
         std::fstream outputFile(outputFilePath + "/salida", std::ios::binary | std::ios::in | std::ios::out);
 
@@ -79,7 +89,7 @@ public:
         outputFile.close();
     }
 
-
+    //Se asegura de realizar el flush final de los frames al terminar el proceso
     void guardarTodosLosFrames() {
         for (int i = 0; i < MAX_FRAMES; ++i) {
             if (frames[i]) {
@@ -91,19 +101,22 @@ public:
     }
 
 public:
+    //Constructor
     PagedArray(const std::string& inputPath, const std::string& outputPath)
         : inputFilePath(inputPath), outputFilePath(outputPath) {
         std::fill(std::begin(frames), std::end(frames), nullptr);
         inicializarArchivoDeSalida();
     }
 
+    //Destructor, limpia la memoria
     ~PagedArray() {
-        guardarTodosLosFrames(); // Asegúrate de guardar cualquier frame restante
+        guardarTodosLosFrames(); //flush final
         for (int i = 0; i < MAX_FRAMES; ++i) {
             delete frames[i];
         }
     }
 
+    //Genera el archivo de salida con contenido nulo para falicitar el recorrido del archivo y la escritura
     void inicializarArchivoDeSalida() {
         std::ofstream outputFile(outputFilePath + "/salida", std::ios::binary | std::ios::out | std::ios::trunc);
         if (!outputFile) {
@@ -117,6 +130,7 @@ public:
         outputFile.close();
     }
 
+    //Operador con logica de sobrecarga
     int& operator[](int index) {
         int frameIndex = index / ARRAY_SIZE;
         int offset = index % ARRAY_SIZE;
@@ -126,6 +140,7 @@ public:
         for (int i = 0; i < MAX_FRAMES; ++i) {
             if (frames[i] && frames[i]->getNumeroPagina() == frameIndex) {
                 frameLoaded = true;
+                PageHits++;
                 return frames[i]->getNumeros()[offset];
             }
         }
@@ -141,6 +156,7 @@ public:
         throw std::runtime_error("Frame no cargado correctamente");
     }
 
+    //Funcion para cargar contenido a un frame
     void cargarFrameDesdeArchivo(int frameIndex) {
         // Verifica si hay un frame vacío
         int freeFrameIndex = -1;
@@ -198,10 +214,11 @@ public:
         frames[freeFrameIndex] = new Frames(frameIndex);
         frames[freeFrameIndex]->setNumeros(data);
         delete[] data;
-
+        PageFaults++;
         //std::cout << "Frame " << frameIndex << " cargado en posición " << position << std::endl;
     }
 
+    //Verifica la disponibilidad de los frames
     int verificarFrames() const {
         for (int i = 0; i < MAX_FRAMES; ++i) {
             if (!frames[i]) return i + 1;
@@ -209,7 +226,7 @@ public:
         return 0;
     }
 };
-
+//Algoritmos de ordenamiento
 // QuickSort
 // Función de partición para Quick Sort
 int partition(PagedArray& arr, int start, int end) {
@@ -264,13 +281,14 @@ void quickSort(PagedArray& arr, int start, int end) {
 
 // InsertionSort
 void insertionSort(PagedArray& arr, int n) {
-    for (int i = 1; i < n; ++i) {
-        int key = arr[i];
-        int j = i - 1;
+    int i, key, j;
+    for (i = 1; i < n; i++) {
+        key = arr[i];
+        j = i - 1;
 
         while (j >= 0 && arr[j] > key) {
             arr[j + 1] = arr[j];
-            --j;
+            j = j - 1;
         }
         arr[j + 1] = key;
     }
@@ -287,6 +305,7 @@ void bubbleSort(PagedArray& arr, int n) {
     }
 }
 
+//Metodo para convertir el archivo final en binario a enteros separados por comas
 void convertirBinarioAEnteros(const std::string& inputFileName, const std::string& outputFileName) {
     std::ifstream inputFile(inputFileName, std::ios::binary);
     if (!inputFile) {
@@ -318,7 +337,10 @@ void convertirBinarioAEnteros(const std::string& inputFileName, const std::strin
 
     inputFile.close();
     outputFile.close();
+    std::cout<<"Page Hits:"<<PageHits<<"\n";
+    std::cout<<"Page Faults:"<<PageFaults<<"\n";;
 }
+
 // Función para calcular y almacenar el tamaño del archivo
 void calcularTamanoArchivo(const std::string& inputFilePath) {
     std::ifstream inputFile(inputFilePath, std::ios::binary | std::ios::ate);
@@ -329,6 +351,8 @@ void calcularTamanoArchivo(const std::string& inputFilePath) {
     fileSizeInt = static_cast<int>(inputFile.tellg());
     inputFile.close();
 }
+
+//Funcion que administra el proceso de seleccion de algoritmos de busqueda y sus resultados
 void sorter(const std::string& inputFilePath, const std::string& outputFilePath, const std::string& algoritmo) {
 
     calcularTamanoArchivo(inputFilePath);
@@ -344,7 +368,7 @@ void sorter(const std::string& inputFilePath, const std::string& outputFilePath,
     }
     inputFile.close();
 
-
+    auto start = std::chrono::high_resolution_clock::now();
     if (algoritmo == "QS") {
         quickSort(pagedArray, 0, totalIntegers - 1);
     } else if (algoritmo == "IS") {
@@ -355,13 +379,18 @@ void sorter(const std::string& inputFilePath, const std::string& outputFilePath,
         std::cerr << "Algoritmo no reconocido: " << algoritmo << std::endl;
         return;
     }
+    // Fin del cronómetro
+    auto end = std::chrono::high_resolution_clock::now();
+    // Calcular la duración
+    std::chrono::duration<double> duration = end - start;
+    // Mostrar la duración
+    std::cout << "El proceso de ordenamiento y guardado duró: " << duration.count() << " segundos." << std::endl;
 }
+
 // Función para leer los argumentos
 int main(int argc, char *argv[]) {
     if (argc != 7) {
         std::cerr << "Uso: " << argv[0] << " -input <INPUT FILE PATH> -output <OUTPUT FILE PATH> -alg <ALGORITMO>" << std::endl;
-        sorter("./entrada",".","QS");
-        convertirBinarioAEnteros("./salida","./salidaEntera.txt");
         return 1;
     }
 

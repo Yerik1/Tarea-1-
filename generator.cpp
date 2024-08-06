@@ -44,54 +44,50 @@ void generateFile(const std::string& outputFilePath, Size size) {
 }
 
 
-
+//Metodo principal del proyecto
 int main(int argc, char *argv[]) {
-        //Variable donde se va a guardar el tamaño
-        Size size;
-        //Variable para guardar el argumento del la ruta
-        std::string outputFilePath;
-        //Cantidad de argumentos diferente a 5
-        if (argc != 5) {
-            std::cerr << "Uso: " << argv[0] << " -size <SIZE> -output <OUTPUT FILE PATH>" << std::endl;
-            generateFile(".", size=MEDIUM);
-            return 1;
-        }
+    //Variable donde se va a guardar el tamaño
+    Size size;
+    //Variable para guardar el argumento del la ruta
+    std::string outputFilePath;
+    //Cantidad de argumentos diferente a 5
+    if (argc != 5) {
+        std::cerr << "Uso: " << argv[0] << " -size <SIZE> -output <OUTPUT FILE PATH>" << std::endl;
+        return 1;
+    }
 
-
-
-        //ciclo para ir guardadando los argumentos
-        for (int i = 1; i < argc; ++i) {
-            std::string arg = argv[i];
-            //Encuentra el argumento size
-            if (arg == "-size") {
-                //Agarra el siguiente y lo categoriza
-                if (i + 1 < argc) {
-                    std::string sizeStr = argv[++i];
-                    if (sizeStr == "SMALL") {
-                        size = SMALL;
-                    } else if (sizeStr == "MEDIUM") {
-                        size = MEDIUM;
-                    } else if (sizeStr == "LARGE") {
-                        size = LARGE;
-                    } else {
-                        std::cerr << "Tamaño inválido. Use SMALL, MEDIUM o LARGE." << std::endl;
-                        return 1;
-                    }
-                }
-
-                //Encuentra el argumento output y lo guarda si no esta vacio
-                } else if (arg == "-output") {
-                if (i + 1 < argc) {
-                    outputFilePath = argv[++i];
+    //ciclo para ir guardadando los argumentos
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        //Encuentra el argumento size
+        if (arg == "-size") {
+            //Agarra el siguiente y lo categoriza
+            if (i + 1 < argc) {
+                std::string sizeStr = argv[++i];
+                if (sizeStr == "SMALL") {
+                    size = SMALL;
+                } else if (sizeStr == "MEDIUM") {
+                    size = MEDIUM;
+                } else if (sizeStr == "LARGE") {
+                    size = LARGE;
+                } else {
+                    std::cerr << "Tamaño inválido. Use SMALL, MEDIUM o LARGE." << std::endl;
+                    return 1;
                 }
             }
+        //Encuentra el argumento output y lo guarda si no esta vacio
+        } else if (arg == "-output") {
+            if (i + 1 < argc) {
+                outputFilePath = argv[++i];
+            }
         }
+    }
 
-        if (outputFilePath.empty()) {
-            std::cerr << "Debe especificar una ruta de archivo de salida." << std::endl;
-            return 1;
-        }
+    if (outputFilePath.empty()) {
+        std::cerr << "Debe especificar una ruta de archivo de salida." << std::endl;
+        return 1;
+    }
     //Llama a funcion para generar el archivo
-        generateFile(outputFilePath, size);
-        return 0;
+    generateFile(outputFilePath, size);
+    return 0;
 }
